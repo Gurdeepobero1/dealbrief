@@ -1,0 +1,25 @@
+{
+  "name": "@dealbrief/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dealbrief/shared": "workspace:*",
+    "@dealbrief/sources": "workspace:*",
+    "@dealbrief/synthesis": "workspace:*",
+    "@dealbrief/trust": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@dealbrief/cli",
+  "version": "0.1.0",
+  "description": "DealBrief CLI — turn any LinkedIn URL or work email into a meeting brief.",
+  "type": "module",
+  "bin": {
+    "dealbrief": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dealbrief/core": "workspace:*",
+    "@dealbrief/shared": "workspace:*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "@types/node": "^22.0.0"
+  },
+  "keywords": ["sales", "gtm", "meeting-prep", "ai", "cli"],
+  "license": "MIT"
+}
