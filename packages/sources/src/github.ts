@@ -41,7 +41,7 @@ export const github: SourceAdapter<GitHubQuery, GitHubActivity | null> = {
 
   async fetch(query: GitHubQuery): Promise<GitHubActivity | null> {
     const token = process.env.GITHUB_TOKEN;
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

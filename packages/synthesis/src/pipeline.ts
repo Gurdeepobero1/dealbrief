@@ -146,7 +146,9 @@ export async function generateBrief(input: PipelineInput): Promise<Brief> {
     person: input.person,
     company: input.company,
     allSources: input.sources,
-    meetingContext: input.meetingContext,
+    meetingContext: input.meetingContext
+      ? { ...input.meetingContext, attendees: input.meetingContext.attendees ?? [] }
+      : undefined,
     ...synthesized,
   };
 
