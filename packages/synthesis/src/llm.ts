@@ -37,7 +37,7 @@ interface LLMResponse {
 const GROQ_MODELS: Record<LLMTask, string> = {
   synthesis: "llama-3.3-70b-versatile",
   classification: "llama-3.1-8b-instant",
-  sensitivity: "gemma2-9b-it",
+  sensitivity: "llama-3.1-8b-instant",
 };
 
 // Sarvam sarvam-m handles all tasks (single model, free tier)
