@@ -227,6 +227,7 @@ export async function prepBrief(input: PrepInput): Promise<PrepOutput> {
     domain: input.companyDomain,
     recentNews,
     claims: companyClaims,
+    techStack: [],
     sources: sources.filter(s => s.sourceType === "news_article"),
   };
 
