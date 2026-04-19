@@ -73,8 +73,8 @@ program
   .command("doctor")
   .description("Check that required API keys are configured")
   .action(() => {
-    const required = ["GROQ_API_KEY", "PROXYCURL_API_KEY", "EXA_API_KEY"];
-    const optional = ["OPENROUTER_API_KEY", "GITHUB_TOKEN", "LISTEN_NOTES_API_KEY"];
+    const required = ["GROQ_API_KEY", "EXA_API_KEY"];
+    const optional = ["SARVAM_API_KEY", "PROXYCURL_API_KEY", "OPENROUTER_API_KEY", "GITHUB_TOKEN", "LISTEN_NOTES_API_KEY"];
 
     console.log("\nDealBrief environment check\n");
     let allRequired = true;
