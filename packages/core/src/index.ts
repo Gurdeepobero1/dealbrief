@@ -1,5 +1,5 @@
 import {
-  proxycurl,
+  lookupPerson,
   exa,
   github,
   listenNotes,
@@ -47,20 +47,20 @@ export interface PrepOutput {
  * web dashboard all call.
  */
 export async function prepBrief(input: PrepInput): Promise<PrepOutput> {
-  // ── 1. Person fetch (optional — requires PROXYCURL_API_KEY) ──────────
-  const profile = await proxycurl.fetch({
+  // ── 1. Person lookup via Exa web search ──────────────────────────────
+  const profile = await lookupPerson({
     linkedinUrl: input.linkedinUrl,
     workEmail: input.workEmail,
+    companyDomain: input.companyDomain,
   });
 
-  // Derive best-guess name and company from email when no LinkedIn data
   const emailUser = input.workEmail?.split("@")[0]?.replace(/[._]/g, " ") ?? "";
   const guessedName = profile?.fullName ?? (emailUser || "Unknown Person");
   const guessedCompany =
-    profile?.experiences[0]?.company ?? input.companyDomain ?? "Unknown";
+    profile?.currentRole?.company ?? input.companyDomain ?? "Unknown";
 
   // ── 2. Parallel enrichment ────────────────────────────────────────────
-  const githubGuess = profile?.publicIdentifier ?? emailUser.split(" ")[0] ?? "";
+  const githubGuess = profile?.linkedinUrl?.split("/in/")[1]?.replace(/\/$/, "") ?? emailUser.split(" ")[0] ?? "";
 
   const [newsResults, githubResult, podcastResults] = await Promise.allSettled([
     companyNewsLast90Days(guessedCompany, input.companyDomain),
@@ -79,40 +79,31 @@ export async function prepBrief(input: PrepInput): Promise<PrepOutput> {
   const publishedContent: Person["publishedContent"] = [];
 
   if (profile) {
-    // LinkedIn profile itself is a source
-    const linkedinSrc: Source = {
-      id: sourceId(profile.sourceUrl),
-      url: profile.sourceUrl,
-      title: `${profile.fullName} — LinkedIn Profile`,
-      publisher: "linkedin.com",
-      fetchedAt: new Date().toISOString(),
-      sourceType: "linkedin_profile",
-    };
-    sources.push(linkedinSrc);
-
-    if (profile.headline) {
-      personClaims.push({
-        statement: `Headline: ${profile.headline}`,
-        sourceIds: [linkedinSrc.id],
-        confidence: 0.95,
-        inferred: false,
-      });
-    }
-
-    for (const a of profile.activities.slice(0, 10)) {
-      const srcId = sourceId(a.link);
-      sources.push({
-        id: srcId,
-        url: a.link,
-        title: a.title.slice(0, 120),
-        publisher: "linkedin.com",
+    for (const url of profile.sourceUrls) {
+      const isLinkedin = url.includes("linkedin.com");
+      const src: Source = {
+        id: sourceId(url),
+        url,
+        title: `${profile.fullName} — ${isLinkedin ? "LinkedIn Profile" : "Web Profile"}`,
+        publisher: new URL(url).hostname,
         fetchedAt: new Date().toISOString(),
-        sourceType: "linkedin_post",
-      });
+        sourceType: isLinkedin ? "linkedin_profile" : "other",
+      };
+      sources.push(src);
+      if (profile.headline) {
+        personClaims.push({
+          statement: `Headline: ${profile.headline}`,
+          sourceIds: [src.id],
+          confidence: 0.8,
+          inferred: false,
+        });
+      }
+    }
+    for (const snippet of profile.snippets) {
       publishedContent.push({
-        type: "linkedin_post",
-        title: a.title.slice(0, 120),
-        url: a.link,
+        type: "article",
+        title: snippet.slice(0, 120),
+        url: profile.linkedinUrl ?? profile.sourceUrls[0] ?? "",
         themes: [],
       });
     }
@@ -160,37 +151,15 @@ export async function prepBrief(input: PrepInput): Promise<PrepOutput> {
     });
   }
 
-  const currentExp = profile?.experiences[0];
   const person: Person = {
     fullName: guessedName,
     headline: profile?.headline,
-    currentRole: currentExp
-      ? {
-          title: currentExp.title,
-          company: currentExp.company,
-          startedAt: currentExp.startsAt
-            ? `${currentExp.startsAt.year}-${String(currentExp.startsAt.month ?? 1).padStart(2, "0")}`
-            : undefined,
-          tenureMonths: currentExp.startsAt
-            ? monthsSince(currentExp.startsAt.year, currentExp.startsAt.month ?? 1)
-            : undefined,
-        }
+    currentRole: profile?.currentRole
+      ? { title: profile.currentRole.title, company: profile.currentRole.company }
       : undefined,
-    priorRoles: (profile?.experiences ?? []).slice(1, 4).map(e => ({
-      title: e.title,
-      company: e.company,
-      startedAt: e.startsAt ? `${e.startsAt.year}` : undefined,
-      endedAt: e.endsAt ? `${e.endsAt.year}` : undefined,
-    })),
-    education: (profile?.education ?? []).slice(0, 3).map(e => ({
-      school: e.school,
-      degree: e.degreeName,
-      year: e.endsAt?.year,
-    })),
-    location: {
-      city: profile?.city,
-      country: profile?.country,
-    },
+    priorRoles: [],
+    education: [],
+    location: profile?.location ? { city: profile.location } : undefined,
     publishedContent,
     claims: personClaims,
     sources: sources.filter(s => s.sourceType !== "news_article"),
