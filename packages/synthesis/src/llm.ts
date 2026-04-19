@@ -5,7 +5,8 @@
  *   - Groq Llama 3.3 70B Versatile:  brief synthesis (high quality)
  *   - Groq Llama 3.1 8B Instant:     classification + ranking (cheap + fast)
  *   - Groq Gemma 2 9B:               sensitivity filtering (fast)
- *   - OpenRouter free models:        fallback on 429s
+ *   - Sarvam sarvam-m:               fallback on 429s (free tier, get key at dashboard.sarvam.ai)
+ *   - OpenRouter free models:        second fallback
  *
  * Rate limits (Groq free, April 2026): 30 RPM, 14,400 RPD, 6,000 TPM.
  * We handle 429s with exponential backoff and provider fallback.
@@ -29,15 +30,18 @@ interface LLMOptions {
 interface LLMResponse {
   content: string;
   model: string;
-  provider: "groq" | "openrouter";
+  provider: "groq" | "sarvam" | "openrouter";
   usage: { promptTokens: number; completionTokens: number };
 }
 
 const GROQ_MODELS: Record<LLMTask, string> = {
   synthesis: "llama-3.3-70b-versatile",
   classification: "llama-3.1-8b-instant",
-  sensitivity: "gemma2-9b-it",
+  sensitivity: "llama-3.1-8b-instant",
 };
+
+// Sarvam sarvam-m handles all tasks (single model, free tier)
+const SARVAM_MODEL = "sarvam-m";
 
 const OPENROUTER_FALLBACK: Record<LLMTask, string> = {
   synthesis: "meta-llama/llama-3.3-70b-instruct:free",
@@ -91,6 +95,52 @@ async function callGroq(model: string, opts: LLMOptions): Promise<LLMResponse> {
   };
 }
 
+async function callSarvam(opts: LLMOptions): Promise<LLMResponse> {
+  const apiKey = process.env.SARVAM_API_KEY;
+  if (!apiKey) throw new Error("SARVAM_API_KEY not set");
+
+  const res = await fetch("https://api.sarvam.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-subscription-key": apiKey,
+    },
+    body: JSON.stringify({
+      model: SARVAM_MODEL,
+      messages: opts.messages,
+      max_tokens: opts.maxTokens ?? 2048,
+      temperature: opts.temperature ?? 0.4,
+      ...(opts.responseFormat === "json_object"
+        ? { response_format: { type: "json_object" } }
+        : {}),
+    }),
+  });
+
+  if (res.status === 429) {
+    const err = new Error("Sarvam rate limit hit") as Error & { code?: string };
+    err.code = "RATE_LIMIT";
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(`Sarvam error ${res.status}: ${await res.text()}`);
+  }
+
+  const json = (await res.json()) as {
+    choices: { message: { content: string } }[];
+    usage?: { prompt_tokens: number; completion_tokens: number };
+  };
+
+  return {
+    content: json.choices[0]!.message.content,
+    model: SARVAM_MODEL,
+    provider: "sarvam",
+    usage: {
+      promptTokens: json.usage?.prompt_tokens ?? 0,
+      completionTokens: json.usage?.completion_tokens ?? 0,
+    },
+  };
+}
+
 async function callOpenRouter(model: string, opts: LLMOptions): Promise<LLMResponse> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not set");
@@ -140,17 +190,27 @@ export async function llm(opts: LLMOptions): Promise<LLMResponse> {
   const fallbackModel = OPENROUTER_FALLBACK[opts.task];
 
   const maxRetries = 3;
+  let lastError: Error = new Error("LLM call failed after retries");
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await callGroq(groqModel, opts);
     } catch (e) {
       const err = e as Error & { code?: string };
+      lastError = err;
+      console.error(`[llm] Groq attempt ${attempt + 1} failed (task=${opts.task}): ${err.message}`);
       if (err.code === "RATE_LIMIT") {
-        // Immediate fallback to OpenRouter on rate limit
+        // Fallback chain: Sarvam → OpenRouter
+        if (process.env.SARVAM_API_KEY) {
+          try {
+            return await callSarvam(opts);
+          } catch (sarvamErr) {
+            console.error(`[llm] Sarvam fallback failed: ${(sarvamErr as Error).message}`);
+          }
+        }
         try {
           return await callOpenRouter(fallbackModel, opts);
-        } catch (fallbackErr) {
-          // If OpenRouter also fails, wait and retry Groq
+        } catch (orErr) {
+          console.error(`[llm] OpenRouter fallback failed: ${(orErr as Error).message}`);
           await sleep(2 ** attempt * 1000);
           continue;
         }
@@ -159,7 +219,7 @@ export async function llm(opts: LLMOptions): Promise<LLMResponse> {
       await sleep(2 ** attempt * 500);
     }
   }
-  throw new Error("LLM call failed after retries");
+  throw lastError;
 }
 
 function sleep(ms: number): Promise<void> {

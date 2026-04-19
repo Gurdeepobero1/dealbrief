@@ -52,7 +52,7 @@ export const proxycurl: SourceAdapter<ProxycurlQuery, ProxycurlProfile | null> =
 
   async fetch(query: ProxycurlQuery): Promise<ProxycurlProfile | null> {
     const apiKey = process.env.PROXYCURL_API_KEY;
-    if (!apiKey) throw new Error("PROXYCURL_API_KEY not set");
+    if (!apiKey) return null;
 
     let url: string;
     if (query.linkedinUrl) {
